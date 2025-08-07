@@ -1,0 +1,15 @@
+# Set paths
+$sourceFile = "C:\Users\numer\OneDrive\Docs - Misbah\Contracts Traded.xlsx"
+$targetFile = "C:\Users\numer\Documents\GitHub\whl-exports-tracker\Contracts Traded.xlsx"
+$repoPath   = "C:\Users\numer\Documents\GitHub\whl-exports-tracker"
+
+# Copy updated Excel file to repo
+Copy-Item -Path $sourceFile -Destination $targetFile -Force
+
+# Change to repo directory
+Set-Location $repoPath
+
+# Git commit & push
+git add "Contracts Traded.xlsx"
+git commit -m "Auto update: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" 2>$null
+git pus

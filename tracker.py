@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 
 # === UPDATED FILE PATH ===
-DATA_PATH = r"C:\Users\numer\OneDrive\Docs - Misbah\Contracts Traded.xlsx"
+DATA_PATH = "Contracts Traded.xlsx"
 
 st.title("📈 WHL Exports Tracking Dashboard")
 
@@ -99,4 +99,5 @@ st.pyplot(fig)
 st.subheader("🗃️ Raw Contract Data")
 st.dataframe(df[['SC#', 'Contract Date', 'Container Qty', 'SC Qty (MT)', 
                      'Sales Rate/MT (USD)', 'Purchase Rate/MT (USD)', 
+
                  'Revenue', 'Cost', 'Gross Margin']])

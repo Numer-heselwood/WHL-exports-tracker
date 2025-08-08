@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 
 # === UPDATED FILE PATH ===
-DATA_PATH = "Contracts Traded - Tracker.xlsx"
+DATA_PATH = "Contracts Traded.xlsx"
 
 st.title("📈 WHL Exports Tracking Dashboard")
 
@@ -17,14 +17,14 @@ else:
     
 
     # Parse and clean data
-    df['Contract Date'] = pd.to_datetime(df['Contract Date'], errors='coerce')
+    df['PC Date'] = pd.to_datetime(df['PC Date'], errors='coerce')
     df['Container Qty'] = pd.to_numeric(df['Container Qty'], errors='coerce')
     df['SC Qty (MT)'] = pd.to_numeric(df['SC Qty (MT)'], errors='coerce')
     df['Sales Rate/MT (USD)'] = pd.to_numeric(df['Sales Rate/MT (USD)'], errors='coerce')
     df['Purchase Rate/MT (USD)'] = pd.to_numeric(df['Purchase Rate/MT (USD)'], errors='coerce')
 
     # Drop rows with missing critical values
-    df.dropna(subset=['SC#', 'Contract Date', 'SC Qty (MT)', 'Sales Rate/MT (USD)', 'Purchase Rate/MT (USD)'], inplace=True)
+    df.dropna(subset=['SC#', 'PC Date', 'SC Qty (MT)', 'Sales Rate/MT (USD)', 'Purchase Rate/MT (USD)'], inplace=True)
 
     # Calculations
     df['Revenue'] = df['SC Qty (MT)'] * df['Sales Rate/MT (USD)']
@@ -78,7 +78,7 @@ col5.metric("Cost", f"${contract_cost:,.2f}")
 col6.metric("Margin", f"${contract_margin:,.2f}")
 
 # Monthly trend
-df['Month'] = df['Contract Date'].dt.to_period('M').astype(str)
+df['Month'] = df['PC Date'].dt.to_period('M').astype(str)
 trend = df.groupby('Month').agg({
         'Revenue': 'sum',
         'Cost': 'sum',
@@ -97,6 +97,7 @@ ax.legend()
 st.pyplot(fig)
 
 st.subheader("🗃️ Raw Contract Data")
-st.dataframe(df[['SC#', 'Contract Date', 'Container Qty', 'SC Qty (MT)', 
+st.dataframe(df[['SC#', 'PC Date', 'Container Qty', 'SC Qty (MT)', 
                      'Sales Rate/MT (USD)', 'Purchase Rate/MT (USD)', 
                  'Revenue', 'Cost', 'Gross Margin']])
+

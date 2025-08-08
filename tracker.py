@@ -70,12 +70,12 @@ st.subheader(f"📌 KPIs for Contract: {selected_contract}")
 col1, col2, col3 = st.columns(3)
 col1.metric("Quantity Sent", f"{contract_material_sent:,.2f}MT")
 col2.metric("Quantity Sold", f"{contract_qty_sold:,.2f}MT")
-col4.metric("Revenue", f"${contract_revenue:,.2f}")
+col3.metric("Containers", len(filtered_df))
 
 col4, col5, col6 = st.columns(3)
+col4.metric("Revenue", f"${contract_revenue:,.2f}")
 col5.metric("Cost", f"${contract_cost:,.2f}")
 col6.metric("Margin", f"${contract_margin:,.2f}")
-col3.metric("Containers", len(filtered_df))
 
 # Monthly trend
 df['Month'] = df['PC Date'].dt.to_period('M').astype(str)
@@ -101,5 +101,6 @@ st.dataframe(df[['SC#', 'PC Date', 'Container Qty', 'SC Qty (MT)',
                      'Sales Rate/MT (USD)', 'Purchase Rate/MT (USD)', 
 
                  'Revenue', 'Cost', 'Gross Margin']])
+
 
 

@@ -77,6 +77,7 @@ else:
     col5.metric("Total Cost", f"${total_cost:,.2f}")
     col6.metric("Gross Margin", f"${total_margin:,.2f}")
 
+    # =======================
     # KPIs for selected contract
     contract_material_sent = filtered_df["Container Qty"].sum()
     contract_qty_sold = filtered_df["SC Qty (MT)"].sum()
@@ -84,7 +85,30 @@ else:
     contract_cost = filtered_df["Cost"].sum()
     contract_margin = filtered_df["Gross Margin"].sum()
 
-    st.subheader(f"📌 KPIs for Contract: {selected_contract}")
+    # Determine contract status
+    if "Status" in filtered_df.columns and not filtered_df["Status"].isna().all():
+        contract_status = filtered_df["Status"].dropna().iloc[0]
+    else:
+        contract_status = "Unknown"
+
+    # Color mapping
+    status_colors = {
+        "Completed": "#28a745",  # green
+        "Pending": "#ff9800",    # orange
+        "Unknown": "#6c757d"     # gray
+    }
+    status_color = status_colors.get(contract_status, "#6c757d")
+
+    # Display contract KPIs with status badge
+    col1, col2 = st.columns([3, 1])
+    col1.subheader(f"📌 KPIs for Contract: {selected_contract}")
+    col2.markdown(
+        f"<div style='background-color:{status_color}; color:white; padding:8px; "
+        f"border-radius:10px; text-align:center; font-weight:bold;'>{contract_status}</div>",
+        unsafe_allow_html=True
+    )
+
+    # Contract KPI metrics
     col1, col2, col3 = st.columns(3)
     col1.metric("Quantity Sent", f"{contract_material_sent:,.2f}MT")
     col2.metric("Quantity Sold", f"{contract_qty_sold:,.2f}MT")
@@ -95,6 +119,7 @@ else:
     col5.metric("Cost", f"${contract_cost:,.2f}")
     col6.metric("Margin", f"${contract_margin:,.2f}")
 
+    # =======================
     # Monthly trend
     status_filtered_df["Month"] = status_filtered_df["PC Date"].dt.to_period("M").astype(str)
     trend = status_filtered_df.groupby("Month", as_index=False).agg({
@@ -114,6 +139,7 @@ else:
     ax.legend()
     st.pyplot(fig)
 
+    # =======================
     # Show raw data
     st.subheader("🗃️ Raw Contract Data (Filtered)")
     show_cols = [c for c in ["SC#", "PC Date", "Status", "Container Qty", "SC Qty (MT)",

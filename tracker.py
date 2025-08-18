@@ -6,44 +6,40 @@ from io import BytesIO
 import os
 
 
-# OneDrive Excel URL
-URL = "https://excel.officeapps.live.com/x/_layouts/XlFileHandler.aspx?WacUserType=WOPI&usid=89e98a5e-7343-9011-87e6-d5726e347c5f&NoAuth=1&waccluster=GUK1"
+# OneDrive direct download link
+ONEDRIVE_URL = "https://onedrive.live.com/download?resid=DA52C24A9933ACF4"
 
 st.set_page_config(layout="wide", page_title="WHL Exports Dashboard")
 
-@st.cache_data(ttl=10)  # Refresh every 10 seconds
-def load_data(url):
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        df = pd.read_excel(BytesIO(response.content), engine="openpyxl", header=1)
-        # Parse columns
-        df["PC Date"] = pd.to_datetime(df.get("PC Date"), errors="coerce")
-        df["Container Qty"] = pd.to_numeric(df.get("Container Qty"), errors="coerce")
-        df["SC Qty (MT)"] = pd.to_numeric(df.get("SC Qty (MT)"), errors="coerce")
-        df["Sales Rate/MT (USD)"] = pd.to_numeric(df.get("Sales Rate/MT (USD)"), errors="coerce")
-        df["Purchase Rate/MT (USD)"] = pd.to_numeric(df.get("Purchase Rate/MT (USD)"), errors="coerce")
-        df["Gross Margin"] = pd.to_numeric(df.get("Gross Margin"), errors="coerce")
-        # Drop rows missing essential info
-        required_cols = ["SC#", "PC Date", "SC Qty (MT)", "Sales Rate/MT (USD)", "Purchase Rate/MT (USD)"]
-        df.dropna(subset=[c for c in required_cols if c in df.columns], inplace=True)
-        # Revenue & Cost
-        df["Revenue"] = df["SC Qty (MT)"] * df["Sales Rate/MT (USD)"]
-        df["Cost"] = df["SC Qty (MT)"] * df["Purchase Rate/MT (USD)"]
-        return df
-    except Exception as e:
-        st.error(f"Failed to load data from OneDrive: {e}")
-        return pd.DataFrame()
-
-df = load_data(URL)
-
-if df.empty:
+# Load data from OneDrive
+try:
+    response = requests.get(ONEDRIVE_URL)
+    response.raise_for_status()
+    df = pd.read_excel(BytesIO(response.content), engine="openpyxl", header=1)
+except Exception as e:
+    st.error(f"Failed to load data from OneDrive: {e}")
     st.stop()
+
+# Parse columns
+df["PC Date"] = pd.to_datetime(df.get("PC Date"), errors="coerce")
+df["Container Qty"] = pd.to_numeric(df.get("Container Qty"), errors="coerce")
+df["SC Qty (MT)"] = pd.to_numeric(df.get("SC Qty (MT)"), errors="coerce")
+df["Sales Rate/MT (USD)"] = pd.to_numeric(df.get("Sales Rate/MT (USD)"), errors="coerce")
+df["Purchase Rate/MT (USD)"] = pd.to_numeric(df.get("Purchase Rate/MT (USD)"), errors="coerce")
+df["Gross Margin"] = pd.to_numeric(df.get("Gross Margin"), errors="coerce")
+
+# Drop rows missing essential info
+required_cols = ["SC#", "PC Date", "SC Qty (MT)", "Sales Rate/MT (USD)", "Purchase Rate/MT (USD)"]
+df.dropna(subset=[c for c in required_cols if c in df.columns], inplace=True)
+
+# Revenue & Cost
+df["Revenue"] = df["SC Qty (MT)"] * df["Sales Rate/MT (USD)"]
+df["Cost"] = df["SC Qty (MT)"] * df["Purchase Rate/MT (USD)"]
 
 # Main title
 st.markdown("<h1 style='text-align: center;'>📊 WHL Exports</h1>", unsafe_allow_html=True)
 
-# Page selection
+# Page selection buttons (centered)
 colA, colB, colC = st.columns([1, 3, 1])
 with colB:
     page = st.radio(
@@ -121,7 +117,7 @@ if page == "Overview":
 
     st.subheader("Cost Trend")
     fig, ax = plt.subplots()
-    ax.plot(trend["Month"], trend["Cost"], marker= 'o', label= "Cost ($)", color= "orange")
+    ax.plot(trend["Month"], trend["Cost"], marker= 'o', label= "cost ($)", color= "orange")
     ax.set_ylabel("Amount ($)")
     ax.set_title("Cost Trend")
     plt.xticks(rotation=45)
@@ -174,9 +170,9 @@ elif page == "Order Book":
             color = "background-color: #fff2cc"
         return [color] * len(row)
     
-    # Column order
+    # Define desired column order
     column_order=[
-        "SC#",
+        "SC#",        # if you reset_index() later, keep 'SC#' as first
         "Sales Qty",
         "Purchase Qty",
         "Sales Price",
@@ -186,6 +182,7 @@ elif page == "Order Book":
         "Status Check"
     ]
 
+    # Reorder dataframe
     order_book_df = order_book_df.reset_index()[column_order]
 
     # Display nicely formatted table

@@ -108,13 +108,11 @@ else:
             "Gross Margin": "sum"
         })
 
-        st.subheader("📊 Monthly Revenue Trend")
+        st.subheader("Cost Trend")
         fig, ax = plt.subplots()
-        ax.plot(trend["Month"], trend["Revenue"], marker="o", label="Revenue ($)")
-        ax.plot(trend["Month"], trend["Cost"], marker="o", label="Cost ($)")
-        ax.plot(trend["Month"], trend["Gross Margin"], marker="o", label="Margin ($)")
+        ax.plot(trend["Month"], trend["Cost"], marker= 'o', label= "cost ($)", color= "orange")
         ax.set_ylabel("Amount ($)")
-        ax.set_title("Revenue, Cost, and Margin Over Time")
+        ax.set_title("Cost Trend")
         plt.xticks(rotation=45)
         ax.legend()
         st.pyplot(fig)
@@ -129,69 +127,89 @@ else:
     elif page == "Order Book":
         st.subheader("📚 Order Book")
 
-        # Aggregate purchase & sales data
+        # Aggregate purchase data by contract
         purchase_df = df.groupby("SC#").agg({
-            "SC Qty (MT)": "sum",
-            "Purchase Rate/MT (USD)": "mean"
-        }).rename(columns={"SC Qty (MT)": "Purchase Qty", "Purchase Rate/MT (USD)": "Purchase Price"})
+            "PC Qty (MT)": "sum",  # sum all containers per contract
+            "Purchase Rate/MT (USD)": "mean"  # average price per contract
+        }).rename(columns={
+            "PC Qty (MT)": "Purchase Qty",
+            "Purchase Rate/MT (USD)": "Purchase Price"
+        })
 
+        # Aggregate sales data by contract
         sales_df = df.groupby("SC#").agg({
-            "SC Qty (MT)": "sum",
+            "SC Qty (MT)": "sum",  # sum all containers per contract
             "Sales Rate/MT (USD)": "mean",
             "Gross Margin": "sum",
             "Margin/MT": "mean"
         }).rename(columns={
             "SC Qty (MT)": "Sales Qty",
-            "Sales Rate/MT (USD)": "Sales Price",
-            "Gross Margin": "Gross Margin",
-            "Margin/MT": "Margin/MT"
+            "Sales Rate/MT (USD)": "Sales Price"
         })
 
+        # Merge purchase and sales data
         order_book_df = pd.merge(purchase_df, sales_df, left_index=True, right_index=True, how="outer")
 
-        # Status check for over/under sold
+        # Status check
         order_book_df["Status Check"] = order_book_df.apply(
             lambda x: "Over Sold" if x["Sales Qty"] > x["Purchase Qty"]
             else ("Over Bought" if x["Purchase Qty"] > x["Sales Qty"] else "Balanced"),
             axis=1
         )
 
+        # Exposure: numeric difference
+        order_book_df["Exposure"] = order_book_df["Sales Qty"] - order_book_df["Purchase Qty"]
+
         # Conditional formatting
-        def highlight_status(row):
-            color = ""
-            if row["Status Check"] == "Over Sold":
-                color = "background-color: #ffcccc"
-            elif row["Status Check"] == "Over Bought":
-                color = "background-color: #fff2cc"
-            return [color] * len(row)
-        
-        # Define desired column order
-        column_order=[
-            "SC#",        # if you reset_index() later, keep 'SC#' as first
+        def highlight_status_and_exposure(row):
+            colors = []
+            for col in row.index:
+                if col == "Status Check":
+                    if row[col] == "Over Sold":
+                        colors.append("background-color: #ffcccc")
+                    elif row[col] == "Over Bought":
+                        colors.append("background-color: #fff2cc")
+                    else:
+                        colors.append("")
+                elif col == "Exposure":
+                    if row[col] > 0:
+                        colors.append("background-color: #ffcccc")  # oversold
+                    elif row[col] < 0:
+                        colors.append("background-color: #fff2cc")  # overbought
+                    else:
+                        colors.append("")
+                else:
+                    colors.append("")
+            return colors
+
+        # Define column order
+        column_order = [
+            "SC#",
             "Sales Qty",
             "Purchase Qty",
+            "Exposure",
             "Sales Price",
             "Purchase Price",
             "Gross Margin",
             "Margin/MT",
             "Status Check"
+            
         ]
 
-        # Reorder dataframe
-        order_book_df=order_book_df = order_book_df.reset_index()[column_order]
-
+        # Reset index and reorder
+        order_book_df = order_book_df.reset_index()[column_order]
 
         # Display nicely formatted table
         st.dataframe(
             order_book_df.style
-            .apply(highlight_status, axis=1)
+            .apply(highlight_status_and_exposure, axis=1)
             .format({
                 "Purchase Qty": "{:,.2f}",
                 "Sales Qty": "{:,.2f}",
                 "Purchase Price": "${:,.2f}",
                 "Sales Price": "${:,.2f}",
                 "Gross Margin": "${:,.2f}",
-                "Margin/MT": "${:,.2f}"
+                "Margin/MT": "${:,.2f}",
+                "Exposure": "{:,.2f}"
             })
         )
-

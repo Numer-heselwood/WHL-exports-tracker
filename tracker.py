@@ -1,19 +1,22 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import requests
+from io import BytesIO
 import os
 
 
-# OneDrive direct download link (replace with your actual link)
-ONEDRIVE_URL = "https://excel.officeapps.live.com/x/_layouts/XlFileHandler.aspx?WacUserType=WOPI&usid=89e98a5e-7343-9011-87e6-d5726e347c5f&NoAuth=1&waccluster=GUK1"
+# OneDrive Excel URL
+URL = "https://excel.officeapps.live.com/x/_layouts/XlFileHandler.aspx?WacUserType=WOPI&usid=89e98a5e-7343-9011-87e6-d5726e347c5f&NoAuth=1&waccluster=GUK1"
 
 st.set_page_config(layout="wide", page_title="WHL Exports Dashboard")
 
-@st.cache_data(ttl=10)  # refresh every 10 seconds
+@st.cache_data(ttl=10)  # Refresh every 10 seconds
 def load_data(url):
     try:
-        df = pd.read_excel(url, header=1)
-
+        response = requests.get(url)
+        response.raise_for_status()
+        df = pd.read_excel(BytesIO(response.content), engine="openpyxl", header=1)
         # Parse columns
         df["PC Date"] = pd.to_datetime(df.get("PC Date"), errors="coerce")
         df["Container Qty"] = pd.to_numeric(df.get("Container Qty"), errors="coerce")
@@ -21,31 +24,26 @@ def load_data(url):
         df["Sales Rate/MT (USD)"] = pd.to_numeric(df.get("Sales Rate/MT (USD)"), errors="coerce")
         df["Purchase Rate/MT (USD)"] = pd.to_numeric(df.get("Purchase Rate/MT (USD)"), errors="coerce")
         df["Gross Margin"] = pd.to_numeric(df.get("Gross Margin"), errors="coerce")
-
         # Drop rows missing essential info
         required_cols = ["SC#", "PC Date", "SC Qty (MT)", "Sales Rate/MT (USD)", "Purchase Rate/MT (USD)"]
         df.dropna(subset=[c for c in required_cols if c in df.columns], inplace=True)
-
         # Revenue & Cost
         df["Revenue"] = df["SC Qty (MT)"] * df["Sales Rate/MT (USD)"]
         df["Cost"] = df["SC Qty (MT)"] * df["Purchase Rate/MT (USD)"]
-
         return df
     except Exception as e:
         st.error(f"Failed to load data from OneDrive: {e}")
-        return pd.DataFrame()  # return empty DataFrame if failure
+        return pd.DataFrame()
 
-# Load the data
-df = load_data(ONEDRIVE_URL)
+df = load_data(URL)
 
-# Check if data loaded
 if df.empty:
     st.stop()
 
 # Main title
 st.markdown("<h1 style='text-align: center;'>📊 WHL Exports</h1>", unsafe_allow_html=True)
 
-# Page selection buttons (centered)
+# Page selection
 colA, colB, colC = st.columns([1, 3, 1])
 with colB:
     page = st.radio(
@@ -55,7 +53,6 @@ with colB:
         label_visibility="collapsed"
     )
 
-# ==================== Overview Page ====================
 if page == "Overview":
     st.subheader("📈 WHL Exports Overview")
 
@@ -124,7 +121,7 @@ if page == "Overview":
 
     st.subheader("Cost Trend")
     fig, ax = plt.subplots()
-    ax.plot(trend["Month"], trend["Cost"], marker='o', label="cost ($)", color="orange")
+    ax.plot(trend["Month"], trend["Cost"], marker= 'o', label= "Cost ($)", color= "orange")
     ax.set_ylabel("Amount ($)")
     ax.set_title("Cost Trend")
     plt.xticks(rotation=45)
@@ -138,20 +135,15 @@ if page == "Overview":
                               "Revenue", "Cost", "Gross Margin"] if c in filtered_df.columns]
     st.dataframe(filtered_df[show_cols])
 
-# ==================== Order Book Page ====================
 elif page == "Order Book":
     st.subheader("📚 Order Book")
 
-    # Aggregate purchase data by contract
+    # Aggregate purchase & sales data
     purchase_df = df.groupby("SC#").agg({
-        "PC Qty (MT)": "sum",
+        "SC Qty (MT)": "sum",
         "Purchase Rate/MT (USD)": "mean"
-    }).rename(columns={
-        "PC Qty (MT)": "Purchase Qty",
-        "Purchase Rate/MT (USD)": "Purchase Price"
-    })
+    }).rename(columns={"SC Qty (MT)": "Purchase Qty", "Purchase Rate/MT (USD)": "Purchase Price"})
 
-    # Aggregate sales data by contract
     sales_df = df.groupby("SC#").agg({
         "SC Qty (MT)": "sum",
         "Sales Rate/MT (USD)": "mean",
@@ -159,50 +151,34 @@ elif page == "Order Book":
         "Margin/MT": "mean"
     }).rename(columns={
         "SC Qty (MT)": "Sales Qty",
-        "Sales Rate/MT (USD)": "Sales Price"
+        "Sales Rate/MT (USD)": "Sales Price",
+        "Gross Margin": "Gross Margin",
+        "Margin/MT": "Margin/MT"
     })
 
-    # Merge purchase and sales data
     order_book_df = pd.merge(purchase_df, sales_df, left_index=True, right_index=True, how="outer")
 
-    # Status check
+    # Status check for over/under sold
     order_book_df["Status Check"] = order_book_df.apply(
         lambda x: "Over Sold" if x["Sales Qty"] > x["Purchase Qty"]
         else ("Over Bought" if x["Purchase Qty"] > x["Sales Qty"] else "Balanced"),
         axis=1
     )
 
-    # Exposure
-    order_book_df["Exposure"] = order_book_df["Sales Qty"] - order_book_df["Purchase Qty"]
-
     # Conditional formatting
-    def highlight_status_and_exposure(row):
-        colors = []
-        for col in row.index:
-            if col == "Status Check":
-                if row[col] == "Over Sold":
-                    colors.append("background-color: #ffcccc")
-                elif row[col] == "Over Bought":
-                    colors.append("background-color: #fff2cc")
-                else:
-                    colors.append("")
-            elif col == "Exposure":
-                if row[col] > 0:
-                    colors.append("background-color: #ffcccc")
-                elif row[col] < 0:
-                    colors.append("background-color: #fff2cc")
-                else:
-                    colors.append("")
-            else:
-                colors.append("")
-        return colors
-
+    def highlight_status(row):
+        color = ""
+        if row["Status Check"] == "Over Sold":
+            color = "background-color: #ffcccc"
+        elif row["Status Check"] == "Over Bought":
+            color = "background-color: #fff2cc"
+        return [color] * len(row)
+    
     # Column order
-    column_order = [
+    column_order=[
         "SC#",
         "Sales Qty",
         "Purchase Qty",
-        "Exposure",
         "Sales Price",
         "Purchase Price",
         "Gross Margin",
@@ -212,16 +188,16 @@ elif page == "Order Book":
 
     order_book_df = order_book_df.reset_index()[column_order]
 
+    # Display nicely formatted table
     st.dataframe(
         order_book_df.style
-        .apply(highlight_status_and_exposure, axis=1)
+        .apply(highlight_status, axis=1)
         .format({
             "Purchase Qty": "{:,.2f}",
             "Sales Qty": "{:,.2f}",
             "Purchase Price": "${:,.2f}",
             "Sales Price": "${:,.2f}",
             "Gross Margin": "${:,.2f}",
-            "Margin/MT": "${:,.2f}",
-            "Exposure": "{:,.2f}"
+            "Margin/MT": "${:,.2f}"
         })
     )

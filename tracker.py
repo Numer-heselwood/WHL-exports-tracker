@@ -13,7 +13,7 @@ if not os.path.exists(DATA_PATH):
 else:
     df = pd.read_excel(DATA_PATH, header=1)
 
-    # Parse columns
+    # Parse and clean data
     df["PC Date"] = pd.to_datetime(df.get("PC Date"), errors="coerce")
     df["Container Qty"] = pd.to_numeric(df.get("Container Qty"), errors="coerce")
     df["SC Qty (MT)"] = pd.to_numeric(df.get("SC Qty (MT)"), errors="coerce")
@@ -21,31 +21,31 @@ else:
     df["Purchase Rate/MT (USD)"] = pd.to_numeric(df.get("Purchase Rate/MT (USD)"), errors="coerce")
     df["Gross Margin"] = pd.to_numeric(df.get("Gross Margin"), errors="coerce")
 
-    # Drop rows missing essential info
     required_cols = ["SC#", "PC Date", "SC Qty (MT)", "Sales Rate/MT (USD)", "Purchase Rate/MT (USD)"]
     df.dropna(subset=[c for c in required_cols if c in df.columns], inplace=True)
 
-    # Revenue & Cost
+    # Derived fields
     df["Revenue"] = df["SC Qty (MT)"] * df["Sales Rate/MT (USD)"]
     df["Cost"] = df["SC Qty (MT)"] * df["Purchase Rate/MT (USD)"]
 
-    # Main title
-    st.markdown("<h1 style='text-align: center;'>📊 WHL Exports</h1>", unsafe_allow_html=True)
+    # Title
+    st.markdown("<h1 style='text-align: center;'>📊 WHL Exports Dashboard</h1>", unsafe_allow_html=True)
 
-    # Page selection buttons (centered)
+    # Navigation
     colA, colB, colC = st.columns([1, 3, 1])
     with colB:
         page = st.radio(
-            "Navigation", 
-            ["Overview", "Order Book"], 
+            "Navigation",
+            ["Overview", "Order Book"],
             horizontal=True,
             label_visibility="collapsed"
         )
 
+    # ==================== OVERVIEW PAGE ====================
     if page == "Overview":
         st.subheader("📈 WHL Exports Overview")
 
-        # Status filter
+        # --- Status filter ---
         if "Status" in df.columns:
             statuses = sorted(df["Status"].dropna().astype(str).unique().tolist())
             statuses.insert(0, "All (Completed + Pending)")
@@ -58,12 +58,14 @@ else:
             st.warning("No 'Status' column found.")
             status_filtered_df = df.copy()
 
-        # Contract filter
+        # --- Contract selection ---
         unique_contracts = status_filtered_df["SC#"].astype(str).unique()
         selected_contract = st.selectbox("Select a Contract (SC#)", unique_contracts)
-        filtered_df = status_filtered_df[status_filtered_df["SC#"].astype(str) == str(selected_contract)].copy()
 
-        # KPIs for status filter
+        # Filter by contract
+        contract_df = status_filtered_df[status_filtered_df["SC#"].astype(str) == str(selected_contract)].copy()
+
+        # --- Grand KPIs (Status level) ---
         total_contracts = status_filtered_df["SC#"].nunique()
         total_material_sent = status_filtered_df["Container Qty"].sum()
         total_qty_sold = status_filtered_df["SC Qty (MT)"].sum()
@@ -82,14 +84,34 @@ else:
         col5.metric("Total Cost", f"${total_cost:,.2f}")
         col6.metric("Gross Margin", f"${total_margin:,.2f}")
 
-        # KPIs for selected contract
+        # --- Container filter (right above contract-level KPIs) ---
+        if "Container Number" in contract_df.columns:
+            unique_containers = contract_df["Container Number"].astype(str).unique().tolist()
+            selected_containers = st.multiselect(
+                "Select Container(s) (optional)",
+                unique_containers,
+                placeholder="Choose one or more containers..."
+            )
+
+            if selected_containers:
+                filtered_df = contract_df[contract_df["Container Number"].astype(str).isin(selected_containers)].copy()
+                st.caption(f"Showing selected containers: {', '.join(selected_containers)}")
+            else:
+                filtered_df = contract_df.copy()
+                st.caption("Showing all containers for this contract.")
+        else:
+            st.warning("No 'Container Number' column found.")
+            filtered_df = contract_df.copy()
+
+        # --- Contract/Container-level KPIs ---
+        st.subheader(f"📌 KPIs for Contract: {selected_contract}")
+
         contract_material_sent = filtered_df["Container Qty"].sum()
         contract_qty_sold = filtered_df["SC Qty (MT)"].sum()
         contract_revenue = filtered_df["Revenue"].sum()
         contract_cost = filtered_df["Cost"].sum()
         contract_margin = filtered_df["Gross Margin"].sum()
 
-        st.subheader(f"📌 KPIs for Contract: {selected_contract}")
         col1, col2, col3 = st.columns(3)
         col1.metric("Quantity Sent", f"{contract_material_sent:,.2f}MT")
         col2.metric("Quantity Sold", f"{contract_qty_sold:,.2f}MT")
@@ -98,9 +120,9 @@ else:
         col4, col5, col6 = st.columns(3)
         col4.metric("Revenue", f"${contract_revenue:,.2f}")
         col5.metric("Cost", f"${contract_cost:,.2f}")
-        col6.metric("Margin", f"${contract_margin:,.2f}")
+        col6.metric("Gross Margin", f"${contract_margin:,.2f}")
 
-        # Monthly trend
+        # --- Monthly Trend Chart ---
         status_filtered_df["Month"] = status_filtered_df["PC Date"].dt.to_period("M").astype(str)
         trend = status_filtered_df.groupby("Month", as_index=False).agg({
             "Revenue": "sum",
@@ -108,29 +130,35 @@ else:
             "Gross Margin": "sum"
         })
 
-        st.subheader("Cost Trend")
+        st.subheader("📊 Monthly Cost Trend")
         fig, ax = plt.subplots()
-        ax.plot(trend["Month"], trend["Cost"], marker= 'o', label= "cost ($)", color= "orange")
+        ax.plot(trend["Month"], trend["Cost"], marker='o', label="Cost ($)", color="orange")
         ax.set_ylabel("Amount ($)")
-        ax.set_title("Cost Trend")
+        ax.set_title("Cost Trend Over Time")
         plt.xticks(rotation=45)
         ax.legend()
         st.pyplot(fig)
 
-        # Raw data
+        # --- Raw Data Table ---
         st.subheader("🗃️ Raw Contract Data (Filtered)")
-        show_cols = [c for c in ["SC#", "PC Date", "Status", "Container Qty", "SC Qty (MT)",
-                                  "Sales Rate/MT (USD)", "Purchase Rate/MT (USD)",
-                                  "Revenue", "Cost", "Gross Margin"] if c in filtered_df.columns]
+        show_cols = [
+            c for c in [
+                "SC#", "PC Date", "Status", "Container Number", "Container Qty",
+                "SC Qty (MT)", "Sales Rate/MT (USD)", "Purchase Rate/MT (USD)",
+                "Revenue", "Cost", "Gross Margin"
+            ]
+            if c in filtered_df.columns
+        ]
         st.dataframe(filtered_df[show_cols])
-    
+
+    # ==================== ORDER BOOK PAGE ====================
     elif page == "Order Book":
         st.subheader("📚 Order Book")
 
         # Aggregate purchase data by contract
         purchase_df = df.groupby("SC#").agg({
-            "PC Qty (MT)": "sum",  # sum all containers per contract
-            "Purchase Rate/MT (USD)": "mean"  # average price per contract
+            "PC Qty (MT)": "sum",
+            "Purchase Rate/MT (USD)": "mean"
         }).rename(columns={
             "PC Qty (MT)": "Purchase Qty",
             "Purchase Rate/MT (USD)": "Purchase Price"
@@ -138,7 +166,7 @@ else:
 
         # Aggregate sales data by contract
         sales_df = df.groupby("SC#").agg({
-            "SC Qty (MT)": "sum",  # sum all containers per contract
+            "SC Qty (MT)": "sum",
             "Sales Rate/MT (USD)": "mean",
             "Gross Margin": "sum",
             "Margin/MT": "mean"
@@ -147,20 +175,16 @@ else:
             "Sales Rate/MT (USD)": "Sales Price"
         })
 
-        # Merge purchase and sales data
         order_book_df = pd.merge(purchase_df, sales_df, left_index=True, right_index=True, how="outer")
 
-        # Status check
         order_book_df["Status Check"] = order_book_df.apply(
             lambda x: "Over Sold" if x["Sales Qty"] > x["Purchase Qty"]
             else ("Over Bought" if x["Purchase Qty"] > x["Sales Qty"] else "Balanced"),
             axis=1
         )
 
-        # Exposure: numeric difference
         order_book_df["Exposure"] = order_book_df["Sales Qty"] - order_book_df["Purchase Qty"]
 
-        # Conditional formatting
         def highlight_status_and_exposure(row):
             colors = []
             for col in row.index:
@@ -173,33 +197,21 @@ else:
                         colors.append("")
                 elif col == "Exposure":
                     if row[col] > 0:
-                        colors.append("background-color: #ffcccc")  # oversold
+                        colors.append("background-color: #ffcccc")
                     elif row[col] < 0:
-                        colors.append("background-color: #fff2cc")  # overbought
+                        colors.append("background-color: #fff2cc")
                     else:
                         colors.append("")
                 else:
                     colors.append("")
             return colors
 
-        # Define column order
         column_order = [
-            "SC#",
-            "Sales Qty",
-            "Purchase Qty",
-            "Exposure",
-            "Sales Price",
-            "Purchase Price",
-            "Gross Margin",
-            "Margin/MT",
-            "Status Check"
-            
+            "SC#", "Sales Qty", "Purchase Qty", "Exposure",
+            "Sales Price", "Purchase Price", "Gross Margin", "Margin/MT", "Status Check"
         ]
-
-        # Reset index and reorder
         order_book_df = order_book_df.reset_index()[column_order]
 
-        # Display nicely formatted table
         st.dataframe(
             order_book_df.style
             .apply(highlight_status_and_exposure, axis=1)
